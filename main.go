@@ -71,7 +71,6 @@ func processChunk(c []byte) map[string]*tempInfo {
 	m := make(map[string]*tempInfo)
 	for {
 		// Read name
-		// FIXME: handle utf8 names.
 		var name string
 		j = i
 		for {
