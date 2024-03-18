@@ -2,4 +2,14 @@
 .git
 
 # Dependency directories (remove the comment below to include it)
+vendor/
 node_modules/
+
+# The binary.
+1brc-go
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out

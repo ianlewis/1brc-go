@@ -39,6 +39,49 @@ node_modules/.installed: package.json package-lock.json
 	npm ci
 	touch node_modules/.installed
 
+## Build
+#####################################################################
+
+1brc-go: main.go ## Build the 1brc-go binary.
+	go mod vendor
+	CGO_ENABLED=0 go build main.go
+
+## Testing
+#####################################################################
+
+test: unit-test #e2e-test
+
+# TODO: add e2e test harness
+# .PHONY: e2e-test
+# e2e-test: 1brc-go ## Runs e2e tests
+
+.PHONY: unit-test
+unit-test: go-test ## Runs all unit tests.
+
+.PHONY: go-test
+go-test: ## Runs Go unit tests.
+	@set -euo pipefail;\
+		extraargs=""; \
+		if [ "$(OUTPUT_FORMAT)" == "github" ]; then \
+			extraargs="-v"; \
+		fi; \
+		go test $$extraargs -race -coverprofile=coverage.out -covermode=atomic ./...
+
+## Benchmarking
+#####################################################################
+
+.PHONY: go-benchmark
+go-benchmark: ## Runs Go benchmarks.
+	@set -e;\
+		go mod vendor; \
+		extraargs=""; \
+		if [ "$(OUTPUT_FORMAT)" == "github" ]; then \
+			extraargs="-v"; \
+		fi; \
+		go test $$extraargs -bench=. -count=$(TESTCOUNT) -benchtime=$(BENCHTIME) -run='^#' ./...
+
+
+
 ## Tools
 #####################################################################
 
