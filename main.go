@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -9,12 +10,15 @@ import (
 	"strconv"
 )
 
-type tempInfo struct {
-	min   int
-	sum   int
-	count int
-	max   int
+// TempInfo stores temperature stats for a single city.
+type TempInfo struct {
+	Min   int
+	Sum   int
+	Count int
+	Max   int
 }
+
+var errInputFormat = errors.New("bad input format")
 
 func main() {
 	if len(os.Args) != 2 {
@@ -30,7 +34,10 @@ func main() {
 	if err != nil && err != io.EOF {
 		panic(err)
 	}
-	m := processChunk(b)
+	m, err := processChunk(b)
+	if err != nil {
+		panic(err)
+	}
 
 	// Print the output alphabetically.
 	var keys []string
@@ -44,10 +51,10 @@ func main() {
 		fmt.Printf(
 			"%s=%.1f/%.1f/%.1f",
 			k,
-			round(float64(v.min))/10,
+			round(float64(v.Min))/10,
 			// FIXME: Fix rounding error.
-			round(float64(v.sum/10/v.count)),
-			round(float64(v.max))/10,
+			round(float64(v.Sum/10/v.Count)),
+			round(float64(v.Max))/10,
 		)
 		if i != len(keys)-1 {
 			fmt.Print(", ")
@@ -65,15 +72,18 @@ func round(n float64) float64 {
 	return r / 10
 }
 
-func processChunk(c []byte) map[string]*tempInfo {
+func processChunk(c []byte) (map[string]*TempInfo, error) {
 	var i int
 	var j int
-	m := make(map[string]*tempInfo)
+	m := make(map[string]*TempInfo)
 	for {
 		// Read name
 		var name string
 		j = i
 		for {
+			if i >= len(c) {
+				return nil, fmt.Errorf("%w: unexpected end of input", errInputFormat)
+			}
 			if c[i] == ';' {
 				name = string(c[j:i])
 				i++
@@ -88,29 +98,29 @@ func processChunk(c []byte) map[string]*tempInfo {
 		var num int
 		var err error
 		for {
-			if c[i] == '\n' {
+			if i >= len(c) || c[i] == '\n' {
 				// TODO: Parse the number into an int.
 				fnum, err = strconv.ParseFloat(string(c[j:i]), 64)
 				if err != nil {
-					panic(err)
+					return nil, fmt.Errorf("%w: %w", errInputFormat, err)
 				}
 				num = int(fnum * 10)
 
 				if info, ok := m[name]; ok {
-					if num < info.min {
-						info.min = num
+					if num < info.Min {
+						info.Min = num
 					}
-					info.sum += num
-					if num > info.max {
-						info.max = num
+					info.Sum += num
+					if num > info.Max {
+						info.Max = num
 					}
-					info.count++
+					info.Count++
 				} else {
-					m[name] = &tempInfo{
-						min:   num,
-						sum:   num,
-						max:   num,
-						count: 1,
+					m[name] = &TempInfo{
+						Min:   num,
+						Sum:   num,
+						Max:   num,
+						Count: 1,
 					}
 				}
 
@@ -121,7 +131,7 @@ func processChunk(c []byte) map[string]*tempInfo {
 		}
 
 		if i >= len(c) {
-			return m
+			return m, nil
 		}
 	}
 }
