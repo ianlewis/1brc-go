@@ -1,11 +1,73 @@
 package main
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 )
+
+func Test_readChunk(t *testing.T) {
+	t.Parallel()
+
+	testCases := map[string]struct {
+		input    string
+		size     int
+		expected [2][]byte
+		err      error
+	}{
+		"exact line": {
+			input: "foo\nbar\nbaz\n",
+			size:  4,
+			expected: [2][]byte{
+				[]byte("foo\n"),
+				{},
+			},
+		},
+		"exact all input": {
+			input: "foo\nbar\nbaz\n",
+			size:  12,
+			expected: [2][]byte{
+				[]byte("foo\nbar\nbaz\n"),
+				{},
+			},
+		},
+		"size bigger than input": {
+			input: "foo\nbar\nbaz\n",
+			size:  13,
+			expected: [2][]byte{
+				[]byte("foo\nbar\nbaz\n"),
+				{},
+			},
+		},
+		"split line": {
+			input: "foo\nbar\nbaz\n",
+			size:  5,
+			expected: [2][]byte{
+				[]byte("foo\n"),
+				[]byte("b"),
+			},
+		},
+	}
+
+	for name, tc := range testCases {
+		tc := tc
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			r := strings.NewReader(tc.input)
+
+			buf, err := readChunk(r, tc.size)
+			if diff := cmp.Diff(tc.err, err, cmpopts.EquateErrors()); diff != "" {
+				t.Fatalf("unexpected error (-want, +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(tc.expected, buf); diff != "" {
+				t.Fatalf("unexpected result (-want, +got):\n%s", diff)
+			}
+		})
+	}
+}
 
 func Test_processChunk(t *testing.T) {
 	t.Parallel()
@@ -111,6 +173,149 @@ func Test_processChunk(t *testing.T) {
 				t.Fatalf("unexpected error (-want, +got):\n%s", diff)
 			}
 			if diff := cmp.Diff(tc.expected, m); diff != "" {
+				t.Fatalf("unexpected result (-want, +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func Test_mergeMap(t *testing.T) {
+	t.Parallel()
+
+	testCases := map[string]struct {
+		left     map[string]*TempInfo
+		right    map[string]*TempInfo
+		expected map[string]*TempInfo
+	}{
+		"left empty": {
+			left: map[string]*TempInfo{},
+			right: map[string]*TempInfo{
+				"Halifax": {
+					Min:   10,
+					Max:   20,
+					Sum:   40,
+					Count: 3,
+				},
+				"NewYork": {
+					Min:   20,
+					Max:   20,
+					Sum:   20,
+					Count: 1,
+				},
+			},
+			expected: map[string]*TempInfo{
+				"Halifax": {
+					Min:   10,
+					Max:   20,
+					Sum:   40,
+					Count: 3,
+				},
+				"NewYork": {
+					Min:   20,
+					Max:   20,
+					Sum:   20,
+					Count: 1,
+				},
+			},
+		},
+		"right empty": {
+			left: map[string]*TempInfo{
+				"Halifax": {
+					Min:   10,
+					Max:   20,
+					Sum:   40,
+					Count: 3,
+				},
+				"NewYork": {
+					Min:   20,
+					Max:   20,
+					Sum:   20,
+					Count: 1,
+				},
+			},
+			right: map[string]*TempInfo{},
+			expected: map[string]*TempInfo{
+				"Halifax": {
+					Min:   10,
+					Max:   20,
+					Sum:   40,
+					Count: 3,
+				},
+				"NewYork": {
+					Min:   20,
+					Max:   20,
+					Sum:   20,
+					Count: 1,
+				},
+			},
+		},
+		"different keys": {
+			left: map[string]*TempInfo{
+				"Halifax": {
+					Min:   10,
+					Max:   20,
+					Sum:   40,
+					Count: 3,
+				},
+			},
+			right: map[string]*TempInfo{
+				"NewYork": {
+					Min:   20,
+					Max:   20,
+					Sum:   20,
+					Count: 1,
+				},
+			},
+			expected: map[string]*TempInfo{
+				"Halifax": {
+					Min:   10,
+					Max:   20,
+					Sum:   40,
+					Count: 3,
+				},
+				"NewYork": {
+					Min:   20,
+					Max:   20,
+					Sum:   20,
+					Count: 1,
+				},
+			},
+		},
+		"merge value": {
+			left: map[string]*TempInfo{
+				"Halifax": {
+					Min:   10,
+					Max:   20,
+					Sum:   40,
+					Count: 3,
+				},
+			},
+			right: map[string]*TempInfo{
+				"Halifax": {
+					Min:   20,
+					Max:   30,
+					Sum:   50,
+					Count: 2,
+				},
+			},
+			expected: map[string]*TempInfo{
+				"Halifax": {
+					Min:   10,
+					Max:   30,
+					Sum:   90,
+					Count: 5,
+				},
+			},
+		},
+	}
+
+	for name, tc := range testCases {
+		tc := tc
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			mergeMap(tc.left, tc.right)
+			if diff := cmp.Diff(tc.expected, tc.left); diff != "" {
 				t.Fatalf("unexpected result (-want, +got):\n%s", diff)
 			}
 		})
