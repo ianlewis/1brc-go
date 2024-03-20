@@ -7,6 +7,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"runtime"
 	"sort"
 	"strconv"
 )
@@ -74,30 +75,22 @@ func printMap(m map[string]*TempInfo) {
 	fmt.Print("}\n")
 }
 
-func processFile(r io.Reader, chunkSize int) (map[string]*TempInfo, error) {
-	// Read file in chunks
-	tempMap := map[string]*TempInfo{}
+func readChunks(r io.Reader, chunkSize int, chunkChan chan []byte, errChan chan error) {
+	defer close(chunkChan)
 	var remainder []byte
 	for {
 		chunkRead, nextRemainder, readErr := readChunk(r, chunkSize)
 		if readErr != nil && !errors.Is(readErr, io.EOF) {
-			return nil, readErr
+			errChan <- readErr
+			return
 		}
 
 		firstLine, chunk := fixRemainder(remainder, chunkRead)
 		if len(firstLine) > 0 {
-			m, err := processChunk(firstLine)
-			if err != nil {
-				return nil, err
-			}
-			mergeMap(tempMap, m)
+			chunkChan <- firstLine
 		}
 		if len(chunk) > 0 {
-			m, err := processChunk(chunk)
-			if err != nil {
-				return nil, err
-			}
-			mergeMap(tempMap, m)
+			chunkChan <- chunk
 		}
 
 		remainder = nextRemainder
@@ -108,12 +101,50 @@ func processFile(r io.Reader, chunkSize int) (map[string]*TempInfo, error) {
 
 	// Handle the remainder if there is one.
 	if len(remainder) > 0 {
-		m, err := processChunk(remainder)
-		if err != nil {
-			return nil, err
-		}
-		mergeMap(tempMap, m)
+		chunkChan <- remainder
 	}
+}
+
+func processChunks(chunkChan chan []byte, mapChan chan map[string]*TempInfo, errChan chan error, doneChan chan struct{}) {
+	defer func() {
+		doneChan <- struct{}{}
+	}()
+
+	for chunk := range chunkChan {
+		m, err := processChunk(chunk)
+		if err != nil {
+			errChan <- err
+			return
+		}
+		mapChan <- m
+	}
+}
+
+func processFile(r io.Reader, chunkSize int) (map[string]*TempInfo, error) {
+	// Create 1 goroutine per CPU core.
+	// 1: read chunks from file and send to chunkChan
+	// N-2: read chunks from chunkChan, process and send result to mapChan
+	// main: read results from mapChan and merge.
+
+	// TODO: Pick the right buffer sizes for channels.
+	chunkChan := make(chan []byte, 5)
+	mapChan := make(chan map[string]*TempInfo, 5)
+	errChan := make(chan error, 5)
+
+	numCPU := runtime.NumCPU()
+
+	go readChunks(r, chunkSize, chunkChan, errChan)
+
+	doneChan := make(chan struct{}, numCPU-2)
+	for i := 0; i < numCPU-2; i++ {
+		go processChunks(chunkChan, mapChan, errChan, doneChan)
+	}
+
+	// Wait for chunks to be processed.
+	tempMap := map[string]*TempInfo{}
+
+	// TODO: merge maps and stop when chunkChan is closed and doneChan recieves all values.
+
 	return tempMap, nil
 }
 
