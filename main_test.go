@@ -1,6 +1,8 @@
 package main
 
 import (
+	"io"
+	"os"
 	"strings"
 	"testing"
 
@@ -66,6 +68,21 @@ func Test_readChunk(t *testing.T) {
 				t.Fatalf("unexpected result (-want, +got):\n%s", diff)
 			}
 		})
+	}
+}
+
+func Benchmark_readChunk(b *testing.B) {
+	f, err := os.Open("test/measurements-10000-unique-keys.txt")
+	if err != nil {
+		b.Fatalf("open: %v", err)
+	}
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		_, _ = readChunk(f, 64*1024)
+		b.StopTimer()
+		f.Seek(0, os.SEEK_SET)
+		b.StartTimer()
 	}
 }
 
@@ -176,6 +193,22 @@ func Test_processChunk(t *testing.T) {
 				t.Fatalf("unexpected result (-want, +got):\n%s", diff)
 			}
 		})
+	}
+}
+
+func Benchmark_processChunk(b *testing.B) {
+	f, err := os.Open("test/measurements-10000-unique-keys.txt")
+	if err != nil {
+		b.Fatalf("open: %v", err)
+	}
+	c, err := io.ReadAll(f)
+	if err != nil {
+		b.Fatalf("ReadAll: %v", err)
+	}
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		_, _ = processChunk(c)
 	}
 }
 

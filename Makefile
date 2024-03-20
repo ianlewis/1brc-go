@@ -16,6 +16,9 @@ SHELL := /bin/bash
 OUTPUT_FORMAT ?= $(shell if [ "${GITHUB_ACTIONS}" == "true" ]; then echo "github"; else echo ""; fi)
 REPO_NAME = $(shell basename "$$(pwd)")
 
+BENCHTIME ?= 1s
+TESTCOUNT ?= 1
+
 .PHONY: help
 help: ## Shows all targets and help from the Makefile (this message).
 	@echo "$(REPO_NAME) Makefile"
@@ -69,6 +72,9 @@ go-test: ## Runs Go unit tests.
 
 ## Benchmarking
 #####################################################################
+
+.PHONY: benchmark
+benchmark: go-benchmark ## Runs all benchmarks.
 
 .PHONY: go-benchmark
 go-benchmark: ## Runs Go benchmarks.
