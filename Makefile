@@ -16,6 +16,7 @@ SHELL := /bin/bash
 OUTPUT_FORMAT ?= $(shell if [ "${GITHUB_ACTIONS}" == "true" ]; then echo "github"; else echo ""; fi)
 REPO_NAME = $(shell basename "$$(pwd)")
 
+E2E_TIMEOUT ?= 10s
 BENCHTIME ?= 1s
 TESTCOUNT ?= 1
 
@@ -47,16 +48,32 @@ node_modules/.installed: package.json package-lock.json
 
 1brc-go: main.go ## Build the 1brc-go binary.
 	go mod vendor
-	CGO_ENABLED=0 go build main.go
+	CGO_ENABLED=0 go build .
 
 ## Testing
 #####################################################################
 
-test: unit-test #e2e-test
+test: unit-test e2e-test
 
-# TODO: add e2e test harness
-# .PHONY: e2e-test
-# e2e-test: 1brc-go ## Runs e2e tests
+.PHONY: e2e-test
+e2e-test: 1brc-go ## Runs e2e tests
+	@set -euo pipefail;\
+		exit_code=0; \
+		for f in test/*.txt; do \
+			tmp=$$(mktemp); \
+			echo "$${f}"; \
+			timeout --signal=SIGKILL --verbose $(E2E_TIMEOUT) ./1brc-go "$${f}" > "$${tmp}"; \
+			out_diff=$$(diff "$${f%%.txt}.out" "$${tmp}" || true); \
+			if [ "$${out_diff}" != "" ]; then \
+				echo "FAIL: $${f}"; \
+				echo "$${out_diff}"; \
+				exit_code=1; \
+			fi; \
+		done; \
+		if [ "$${exit_code}" != "0" ]; then \
+			exit "$${exit_code}"; \
+		fi
+
 
 .PHONY: unit-test
 unit-test: go-test ## Runs all unit tests.

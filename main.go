@@ -33,19 +33,21 @@ func main() {
 	}
 
 	// Read file in chunks
-	var tempMap map[string]*TempInfo
+	tempMap := map[string]*TempInfo{}
 	for {
-		c, err := readChunk(f, 64*1024)
-		if err != nil && !errors.Is(err, io.EOF) {
-			panic(err)
+		c, readErr := readChunk(f, 64*1024*1024)
+		if readErr != nil && !errors.Is(readErr, io.EOF) {
+			panic(readErr)
 		}
-		// TODO: handle remaining bytes from readChunk.
-		m, err := processChunk(c[0])
-		if err != nil {
-			panic(err)
+		if len(c[0]) > 0 {
+			// TODO: handle remaining bytes from readChunk.
+			m, err := processChunk(c[0])
+			if err != nil {
+				panic(err)
+			}
+			mergeMap(tempMap, m)
 		}
-		mergeMap(tempMap, m)
-		if errors.Is(err, io.EOF) {
+		if errors.Is(readErr, io.EOF) {
 			break
 		}
 	}
@@ -59,6 +61,7 @@ func main() {
 	fmt.Print("{")
 	for i, k := range keys {
 		v := tempMap[k]
+		// FIXME: rounding error
 		fmt.Printf(
 			"%s=%.1f/%.1f/%.1f",
 			k,
@@ -99,7 +102,7 @@ func readChunk(r io.Reader, size int) ([2][]byte, error) {
 	buf[1] = buf[0][i+1 : bytesRead]
 	buf[0] = buf[0][:i+1]
 
-	return buf, nil
+	return buf, err
 }
 
 // processChunk reads an input chunk.
