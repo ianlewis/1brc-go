@@ -138,7 +138,8 @@ func readChunk(r io.Reader, size int) ([]byte, []byte, error) {
 
 // fixRemainder creates a new bytes slice for the first line from a remainder
 // of a previous chunk and the begining of the next chunk. It returns the first
-// line and remainder of the next chunk.
+// line and remainder of the next chunk. This is so that only the first line
+// need be copied.
 func fixRemainder(remainder, chunk []byte) ([]byte, []byte) {
 	if chunk == nil {
 		panic("nil chunk")
@@ -162,7 +163,7 @@ func fixRemainder(remainder, chunk []byte) ([]byte, []byte) {
 	return firstLine, nextChunk
 }
 
-// processChunk reads an input chunk.
+// processChunk reads an input chunk. Chunks should be comprised of full lines.
 func processChunk(c []byte) (map[string]*TempInfo, error) {
 	m := make(map[string]*TempInfo)
 	if c == nil {
