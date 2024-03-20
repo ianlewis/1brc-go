@@ -32,35 +32,34 @@ func main() {
 		panic(err)
 	}
 
-	// Read file in chunks
-	tempMap := map[string]*TempInfo{}
-	for {
-		c, readErr := readChunk(f, 64*1024*1024)
-		if readErr != nil && !errors.Is(readErr, io.EOF) {
-			panic(readErr)
-		}
-		if len(c[0]) > 0 {
-			// TODO: handle remaining bytes from readChunk.
-			m, err := processChunk(c[0])
-			if err != nil {
-				panic(err)
-			}
-			mergeMap(tempMap, m)
-		}
-		if errors.Is(readErr, io.EOF) {
-			break
-		}
+	// TODO: Pick a good chunk size.
+	m, err := processFile(f, 64*1024)
+	if err != nil {
+		panic(err)
 	}
 
+	printMap(m)
+}
+
+// round rounds to the nearest tenth.
+func round(n float64) float64 {
+	r := math.Round(n * 10)
+	if r == -0.0 {
+		return 0.0
+	}
+	return r / 10
+}
+
+func printMap(m map[string]*TempInfo) {
 	// Print the output alphabetically.
 	var keys []string
-	for k := range tempMap {
+	for k := range m {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 	fmt.Print("{")
 	for i, k := range keys {
-		v := tempMap[k]
+		v := m[k]
 		fmt.Printf(
 			"%s=%.1f/%.1f/%.1f",
 			k,
@@ -75,40 +74,103 @@ func main() {
 	fmt.Print("}\n")
 }
 
-// round rounds to the nearest tenth.
-func round(n float64) float64 {
-	r := math.Round(n * 10)
-	if r == -0.0 {
-		return 0.0
+func processFile(r io.Reader, chunkSize int) (map[string]*TempInfo, error) {
+	// Read file in chunks
+	tempMap := map[string]*TempInfo{}
+	var remainder []byte
+	for {
+		chunkRead, nextRemainder, readErr := readChunk(r, chunkSize)
+		if readErr != nil && !errors.Is(readErr, io.EOF) {
+			return nil, readErr
+		}
+
+		firstLine, chunk := fixRemainder(remainder, chunkRead)
+		if len(firstLine) > 0 {
+			m, err := processChunk(firstLine)
+			if err != nil {
+				return nil, err
+			}
+			mergeMap(tempMap, m)
+		}
+		if len(chunk) > 0 {
+			m, err := processChunk(chunk)
+			if err != nil {
+				return nil, err
+			}
+			mergeMap(tempMap, m)
+		}
+
+		remainder = nextRemainder
+		if errors.Is(readErr, io.EOF) {
+			break
+		}
 	}
-	return r / 10
+
+	// Handle the remainder if there is one.
+	if len(remainder) > 0 {
+		m, err := processChunk(remainder)
+		if err != nil {
+			return nil, err
+		}
+		mergeMap(tempMap, m)
+	}
+	return tempMap, nil
 }
 
-// readChunk reads and returns two chunks of input totaling the given
-// size. This is done to avoid copies.
-func readChunk(r io.Reader, size int) ([2][]byte, error) {
-	buf := [2][]byte{
-		make([]byte, size),    // lines of input
-		make([]byte, 0, size), // remaining bytes
-	}
-	bytesRead, err := r.Read(buf[0])
+// readChunk reads and returns two chunks of input totaling the given size.
+// The first chunk contains full lines that can be processed. The second chunk is
+// the remainder which is a partial line. This is done to avoid copies.
+func readChunk(r io.Reader, size int) ([]byte, []byte, error) {
+	buf := make([]byte, size)          // lines of input
+	remainder := make([]byte, 0, size) // remaining bytes
+	bytesRead, err := r.Read(buf)
 	if err != nil && !errors.Is(err, io.EOF) {
-		return buf, err
+		return buf, remainder, err
 	}
-	buf[0] = buf[0][:bytesRead]
+	buf = buf[:bytesRead]
 
-	i := bytes.LastIndex(buf[0], []byte{'\n'})
-	buf[1] = buf[0][i+1 : bytesRead]
-	buf[0] = buf[0][:i+1]
+	i := bytes.LastIndexByte(buf, '\n')
+	remainder = buf[i+1 : bytesRead]
+	buf = buf[:i+1]
 
-	return buf, err
+	return buf, remainder, err
+}
+
+// fixRemainder creates a new bytes slice for the first line from a remainder
+// of a previous chunk and the begining of the next chunk. It returns the first
+// line and remainder of the next chunk.
+func fixRemainder(remainder, chunk []byte) ([]byte, []byte) {
+	if chunk == nil {
+		panic("nil chunk")
+	}
+
+	var firstLine []byte
+	var nextChunk []byte
+	if len(remainder) == 0 {
+		nextChunk = chunk
+	} else {
+		// Handle the first line.
+		nlIndex := bytes.IndexByte(chunk, '\n')
+		firstLine = append(firstLine, remainder...)
+		if nlIndex != -1 {
+			firstLine = append(firstLine, chunk[:nlIndex+1]...)
+			nextChunk = chunk[nlIndex+1:]
+		} else {
+			firstLine = append(firstLine, chunk...)
+		}
+	}
+	return firstLine, nextChunk
 }
 
 // processChunk reads an input chunk.
 func processChunk(c []byte) (map[string]*TempInfo, error) {
+	m := make(map[string]*TempInfo)
+	if c == nil {
+		return m, nil
+	}
+
 	var i int // index into chunk.
 	var j int // start index used for parsing.
-	m := make(map[string]*TempInfo)
 	for {
 		// Read name
 		var name string

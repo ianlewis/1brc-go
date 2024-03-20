@@ -14,42 +14,35 @@ func Test_readChunk(t *testing.T) {
 	t.Parallel()
 
 	testCases := map[string]struct {
-		input    string
-		size     int
-		expected [2][]byte
-		err      error
+		input     string
+		size      int
+		chunk     []byte
+		remainder []byte
+		err       error
 	}{
 		"exact line": {
-			input: "foo\nbar\nbaz\n",
-			size:  4,
-			expected: [2][]byte{
-				[]byte("foo\n"),
-				{},
-			},
+			input:     "foo\nbar\nbaz\n",
+			size:      4,
+			chunk:     []byte("foo\n"),
+			remainder: []byte{},
 		},
 		"exact all input": {
-			input: "foo\nbar\nbaz\n",
-			size:  12,
-			expected: [2][]byte{
-				[]byte("foo\nbar\nbaz\n"),
-				{},
-			},
+			input:     "foo\nbar\nbaz\n",
+			size:      12,
+			chunk:     []byte("foo\nbar\nbaz\n"),
+			remainder: []byte{},
 		},
 		"size bigger than input": {
-			input: "foo\nbar\nbaz\n",
-			size:  13,
-			expected: [2][]byte{
-				[]byte("foo\nbar\nbaz\n"),
-				{},
-			},
+			input:     "foo\nbar\nbaz\n",
+			size:      13,
+			chunk:     []byte("foo\nbar\nbaz\n"),
+			remainder: []byte{},
 		},
 		"split line": {
-			input: "foo\nbar\nbaz\n",
-			size:  5,
-			expected: [2][]byte{
-				[]byte("foo\n"),
-				[]byte("b"),
-			},
+			input:     "foo\nbar\nbaz\n",
+			size:      5,
+			chunk:     []byte("foo\n"),
+			remainder: []byte("b"),
 		},
 	}
 
@@ -60,12 +53,15 @@ func Test_readChunk(t *testing.T) {
 
 			r := strings.NewReader(tc.input)
 
-			buf, err := readChunk(r, tc.size)
+			buf, remainder, err := readChunk(r, tc.size)
 			if diff := cmp.Diff(tc.err, err, cmpopts.EquateErrors()); diff != "" {
 				t.Fatalf("unexpected error (-want, +got):\n%s", diff)
 			}
-			if diff := cmp.Diff(tc.expected, buf); diff != "" {
-				t.Fatalf("unexpected result (-want, +got):\n%s", diff)
+			if diff := cmp.Diff(tc.chunk, buf); diff != "" {
+				t.Fatalf("unexpected chunk (-want, +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(tc.remainder, remainder); diff != "" {
+				t.Fatalf("unexpected remainder (-want, +got):\n%s", diff)
 			}
 		})
 	}
@@ -79,7 +75,7 @@ func Benchmark_readChunk(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		_, _ = readChunk(f, 64*1024)
+		_, _, _ = readChunk(f, 64*1024)
 		b.StopTimer()
 		f.Seek(0, os.SEEK_SET)
 		b.StartTimer()
@@ -196,8 +192,24 @@ func Test_processChunk(t *testing.T) {
 	}
 }
 
-func Benchmark_processChunk(b *testing.B) {
-	f, err := os.Open("test/measurements-10000-unique-keys.txt")
+func Benchmark_processChunk_uniqueKeys(b *testing.B) {
+	f, err := os.Open("test/measurements-20.txt")
+	if err != nil {
+		b.Fatalf("open: %v", err)
+	}
+	c, err := io.ReadAll(f)
+	if err != nil {
+		b.Fatalf("ReadAll: %v", err)
+	}
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		_, _ = processChunk(c)
+	}
+}
+
+func Benchmark_processChunk_utf8(b *testing.B) {
+	f, err := os.Open("test/measurements-complex-utf8.txt")
 	if err != nil {
 		b.Fatalf("open: %v", err)
 	}
@@ -349,6 +361,123 @@ func Test_mergeMap(t *testing.T) {
 
 			mergeMap(tc.left, tc.right)
 			if diff := cmp.Diff(tc.expected, tc.left); diff != "" {
+				t.Fatalf("unexpected result (-want, +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func Test_fixRemainder(t *testing.T) {
+	t.Parallel()
+
+	testCases := map[string]struct {
+		remainder     []byte
+		chunk         []byte
+		expectedLine  []byte
+		expectedChunk []byte
+		err           error
+	}{
+		"no remainder": {
+			remainder:     []byte{},
+			chunk:         []byte("foo;1.0\nbar;2.0\nbaz;3.0\n"),
+			expectedLine:  nil,
+			expectedChunk: []byte("foo;1.0\nbar;2.0\nbaz;3.0\n"),
+		},
+		"remainder": {
+			remainder:     []byte("foo;1"),
+			chunk:         []byte(".0\nbar;2.0\nbaz;3.0\n"),
+			expectedLine:  []byte("foo;1.0\n"),
+			expectedChunk: []byte("bar;2.0\nbaz;3.0\n"),
+		},
+	}
+
+	for name, tc := range testCases {
+		tc := tc
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			line, chunk := fixRemainder(tc.remainder, tc.chunk)
+			if diff := cmp.Diff(tc.expectedLine, line); diff != "" {
+				t.Fatalf("unexpected line (-want, +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(tc.expectedChunk, chunk); diff != "" {
+				t.Fatalf("unexpected chunk (-want, +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func Test_processFile(t *testing.T) {
+	t.Parallel()
+
+	testCases := map[string]struct {
+		input    string
+		size     int
+		expected map[string]*TempInfo
+		err      error
+	}{
+		"exact line": {
+			input: "foo;1.0\nbar;2.0\nbaz;3.0\n",
+			size:  8,
+			expected: map[string]*TempInfo{
+				"foo": {
+					Min:   10,
+					Max:   10,
+					Sum:   10,
+					Count: 1,
+				},
+				"bar": {
+					Min:   20,
+					Max:   20,
+					Sum:   20,
+					Count: 1,
+				},
+				"baz": {
+					Min:   30,
+					Max:   30,
+					Sum:   30,
+					Count: 1,
+				},
+			},
+		},
+		"line chunked": {
+			input: "foo;1.0\nbar;2.0\nbaz;3.0\n",
+			size:  12,
+			expected: map[string]*TempInfo{
+				"foo": {
+					Min:   10,
+					Max:   10,
+					Sum:   10,
+					Count: 1,
+				},
+				"bar": {
+					Min:   20,
+					Max:   20,
+					Sum:   20,
+					Count: 1,
+				},
+				"baz": {
+					Min:   30,
+					Max:   30,
+					Sum:   30,
+					Count: 1,
+				},
+			},
+		},
+	}
+
+	for name, tc := range testCases {
+		tc := tc
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			r := strings.NewReader(tc.input)
+
+			m, err := processFile(r, tc.size)
+			if diff := cmp.Diff(tc.err, err, cmpopts.EquateErrors()); diff != "" {
+				t.Fatalf("unexpected error (-want, +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(tc.expected, m); diff != "" {
 				t.Fatalf("unexpected result (-want, +got):\n%s", diff)
 			}
 		})
