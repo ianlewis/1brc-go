@@ -61,12 +61,11 @@ func main() {
 	fmt.Print("{")
 	for i, k := range keys {
 		v := tempMap[k]
-		// FIXME: rounding error
 		fmt.Printf(
 			"%s=%.1f/%.1f/%.1f",
 			k,
 			round(float64(v.Min))/10,
-			round(float64(v.Sum/10/v.Count)),
+			round(float64(v.Sum)/10/float64(v.Count)),
 			round(float64(v.Max))/10,
 		)
 		if i != len(keys)-1 {
