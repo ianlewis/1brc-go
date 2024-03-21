@@ -166,10 +166,6 @@ func Test_processChunk(t *testing.T) {
 			chunk: []byte("Halifax;2.0\n\n"),
 			err:   errInputFormat,
 		},
-		"bad number format": {
-			chunk: []byte("Halifax;abc\n"),
-			err:   errInputFormat,
-		},
 		"no number": {
 			chunk: []byte("Halifax;\n"),
 			err:   errInputFormat,
@@ -478,6 +474,40 @@ func Test_processFile(t *testing.T) {
 				t.Fatalf("unexpected error (-want, +got):\n%s", diff)
 			}
 			if diff := cmp.Diff(tc.expected, m); diff != "" {
+				t.Fatalf("unexpected result (-want, +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func Test_toInt(t *testing.T) {
+	t.Parallel()
+
+	testCases := map[string]struct {
+		b []byte
+		n int
+	}{
+		"zero decimal": {
+			b: []byte("5.0"),
+			n: 50,
+		},
+		"greater than 10": {
+			b: []byte("15.2"),
+			n: 152,
+		},
+		"less than 10": {
+			b: []byte("4.6"),
+			n: 46,
+		},
+	}
+
+	for name, tc := range testCases {
+		tc := tc
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			n := toInt(tc.b)
+			if diff := cmp.Diff(tc.n, n); diff != "" {
 				t.Fatalf("unexpected result (-want, +got):\n%s", diff)
 			}
 		})

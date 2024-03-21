@@ -3,13 +3,17 @@ package main
 import (
 	"bytes"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"os"
 	"runtime"
+	"runtime/pprof"
+	"runtime/trace"
 	"sort"
-	"strconv"
+	// "strconv"
 )
 
 // TempInfo stores temperature stats for a single city.
@@ -20,23 +24,64 @@ type TempInfo struct {
 	Max   int
 }
 
-var errInputFormat = errors.New("bad input format")
+var (
+	errInputFormat = errors.New("bad input format")
 
-// TODO: remove panics.
+	cpuprofile       = flag.String("cpuprofile", "", "write cpu profile to `file`")
+	memprofile       = flag.String("memprofile", "", "write memory profile to `file`")
+	executionprofile = flag.String("execprofile", "", "write trace execution to `file`")
+	input            = flag.String("input", "", "path to the input file to evaluate")
+)
 
 func main() {
-	if len(os.Args) != 2 {
-		panic("args != 2")
-	}
-	f, err := os.Open(os.Args[1])
-	if err != nil {
-		panic(err)
+	flag.Parse()
+
+	if *executionprofile != "" {
+		f, err := os.Create(*executionprofile)
+		if err != nil {
+			log.Fatal("could not create trace execution profile: ", err)
+		}
+		defer f.Close()
+		trace.Start(f)
+		defer trace.Stop()
 	}
 
-	// TODO: Pick a good chunk size.
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			log.Fatal("could not create CPU profile: ", err)
+		}
+		defer f.Close()
+		if err := pprof.StartCPUProfile(f); err != nil {
+			log.Fatal("could not start CPU profile: ", err)
+		}
+		defer pprof.StopCPUProfile()
+	}
+
+	args := flag.Args()
+	if len(args) != 1 {
+		log.Fatalf("invalid arguments: %v", args)
+	}
+	f, err := os.Open(args[0])
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	m, err := processFile(f, 64*1024*1024)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
+	}
+
+	if *memprofile != "" {
+		f, err := os.Create(*memprofile)
+		if err != nil {
+			log.Fatal("could not create memory profile: ", err)
+		}
+		defer f.Close()
+		runtime.GC()
+		if err := pprof.WriteHeapProfile(f); err != nil {
+			log.Fatal("could not write memory profile: ", err)
+		}
 	}
 
 	printMap(m)
@@ -243,17 +288,12 @@ func processChunk(c []byte) (map[string]*TempInfo, error) {
 
 		// Read num
 		j = i
-		var fnum float64
-		var num int
-		var err error
 		for {
 			if i >= len(c) || c[i] == '\n' {
-				// TODO: Parse the number into an int.
-				fnum, err = strconv.ParseFloat(string(c[j:i]), 64)
-				if err != nil {
-					return nil, fmt.Errorf("%w: %w", errInputFormat, err)
+				if len(c[j:i]) == 0 {
+					return nil, fmt.Errorf("%w: unexpected end of input", errInputFormat)
 				}
-				num = int(fnum * 10)
+				num := toInt(c[j:i])
 
 				if info, ok := m[name]; ok {
 					if num < info.Min {
@@ -302,4 +342,25 @@ func mergeMap(left, right map[string]*TempInfo) {
 			left[k] = right[k]
 		}
 	}
+}
+
+func toInt(b []byte) int {
+	var isNegative bool
+	if b[0] == '-' {
+		isNegative = true
+		b = b[1:]
+	}
+
+	var n int
+	for i := range b {
+		if b[i] != '.' {
+			n *= 10
+			n += int(b[i] - '0')
+		}
+	}
+
+	if isNegative {
+		n *= -1
+	}
+	return n
 }
