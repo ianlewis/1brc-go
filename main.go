@@ -126,26 +126,48 @@ func processFile(r io.Reader, chunkSize int) (map[string]*TempInfo, error) {
 	// N-2: read chunks from chunkChan, process and send result to mapChan
 	// main: read results from mapChan and merge.
 
-	// TODO: Pick the right buffer sizes for channels.
-	chunkChan := make(chan []byte, 5)
-	mapChan := make(chan map[string]*TempInfo, 5)
-	errChan := make(chan error, 5)
-
 	numCPU := runtime.NumCPU()
+	processGoroutines := numCPU
+
+	chunkChan := make(chan []byte, processGoroutines*3)
+	mapChan := make(chan map[string]*TempInfo, processGoroutines*2)
+	errChan := make(chan error, processGoroutines)
 
 	go readChunks(r, chunkSize, chunkChan, errChan)
 
 	doneChan := make(chan struct{}, numCPU-2)
-	for i := 0; i < numCPU-2; i++ {
+	for i := 0; i < processGoroutines; i++ {
 		go processChunks(chunkChan, mapChan, errChan, doneChan)
 	}
 
 	// Wait for chunks to be processed.
 	tempMap := map[string]*TempInfo{}
 
-	// TODO: merge maps and stop when chunkChan is closed and doneChan recieves all values.
+	// Merge maps and stop when doneChan recieves all values.
+	var i int
+	for {
+		select {
+		case m := <-mapChan:
+			mergeMap(tempMap, m)
+		case <-doneChan:
+			i++
+		}
+		if i >= processGoroutines {
+			// All processors are done. Drain the map channel.
+			for len(mapChan) > 0 {
+				mergeMap(tempMap, <-mapChan)
+			}
+			break
+		}
+	}
 
-	return tempMap, nil
+	// Return an error if there is one.
+	select {
+	case err := <-errChan:
+		return nil, err
+	default:
+		return tempMap, nil
+	}
 }
 
 // readChunk reads and returns two chunks of input totaling the given size.
