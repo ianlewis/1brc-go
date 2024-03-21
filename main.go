@@ -34,7 +34,7 @@ func main() {
 	}
 
 	// TODO: Pick a good chunk size.
-	m, err := processFile(f, 64*1024)
+	m, err := processFile(f, 64*1024*1024)
 	if err != nil {
 		panic(err)
 	}
