@@ -30,7 +30,6 @@ var (
 	cpuprofile       = flag.String("cpuprofile", "", "write cpu profile to `file`")
 	memprofile       = flag.String("memprofile", "", "write memory profile to `file`")
 	executionprofile = flag.String("execprofile", "", "write trace execution to `file`")
-	input            = flag.String("input", "", "path to the input file to evaluate")
 )
 
 func main() {
