@@ -261,14 +261,15 @@ func fixRemainder(remainder, chunk []byte) ([]byte, []byte) {
 }
 
 // processChunk reads an input chunk. Chunks should be comprised of full lines.
-func processChunk(c []byte) (map[string]*TempInfo, error) {
+func processChunk(b []byte) (map[string]*TempInfo, error) {
 	m := make(map[string]*TempInfo)
-	if c == nil {
+	if len(b) == 0 {
 		return m, nil
 	}
 
 	var i int // index into chunk.
 	var j int // start index used for parsing.
+	c := string(b)
 	for {
 		// Read name
 		var name string
@@ -278,7 +279,7 @@ func processChunk(c []byte) (map[string]*TempInfo, error) {
 				return nil, fmt.Errorf("%w: unexpected end of input", errInputFormat)
 			}
 			if c[i] == ';' {
-				name = string(c[j:i])
+				name = c[j:i]
 				i++
 				break
 			}
@@ -343,18 +344,18 @@ func mergeMap(left, right map[string]*TempInfo) {
 	}
 }
 
-func toInt(b []byte) int {
+func toInt(s string) int {
 	var isNegative bool
-	if b[0] == '-' {
+	if s[0] == '-' {
 		isNegative = true
-		b = b[1:]
+		s = s[1:]
 	}
 
 	var n int
-	for i := range b {
-		if b[i] != '.' {
+	for i := range s {
+		if s[i] != '.' {
 			n *= 10
-			n += int(b[i] - '0')
+			n += int(s[i] - '0')
 		}
 	}
 

@@ -161,7 +161,6 @@ func Test_processChunk(t *testing.T) {
 			chunk: []byte("Halifax\n"),
 			err:   errInputFormat,
 		},
-		// TODO: Maybe ignore empty lines?
 		"empty line": {
 			chunk: []byte("Halifax;2.0\n\n"),
 			err:   errInputFormat,
@@ -484,19 +483,19 @@ func Test_toInt(t *testing.T) {
 	t.Parallel()
 
 	testCases := map[string]struct {
-		b []byte
+		s string
 		n int
 	}{
 		"zero decimal": {
-			b: []byte("5.0"),
+			s: "5.0",
 			n: 50,
 		},
 		"greater than 10": {
-			b: []byte("15.2"),
+			s: "15.2",
 			n: 152,
 		},
 		"less than 10": {
-			b: []byte("4.6"),
+			s: "4.6",
 			n: 46,
 		},
 	}
@@ -506,7 +505,7 @@ func Test_toInt(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			n := toInt(tc.b)
+			n := toInt(tc.s)
 			if diff := cmp.Diff(tc.n, n); diff != "" {
 				t.Fatalf("unexpected result (-want, +got):\n%s", diff)
 			}
