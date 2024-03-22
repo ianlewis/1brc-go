@@ -26,7 +26,7 @@ type TempInfo struct {
 
 const (
 	// TODO: Store resulting cities in an array.
-	// maxCities = 10000
+	maxCities = 10000
 	chunkSize = 64 * 1024 * 1024
 )
 
@@ -208,7 +208,7 @@ func processFile(r io.Reader, chunkSize int) (map[string]*TempInfo, error) {
 	}()
 
 	// Merge resulting maps
-	tempMap := map[string]*TempInfo{}
+	tempMap := make(map[string]*TempInfo, maxCities)
 	for m := range mapChan {
 		mergeMap(tempMap, m)
 	}
@@ -270,7 +270,7 @@ func fixRemainder(remainder, chunk []byte) ([]byte, []byte) {
 
 // processChunk reads an input chunk. Chunks should be comprised of full lines.
 func processChunk(b []byte) (map[string]*TempInfo, error) {
-	m := make(map[string]*TempInfo)
+	m := make(map[string]*TempInfo, maxCities)
 	if len(b) == 0 {
 		return m, nil
 	}
