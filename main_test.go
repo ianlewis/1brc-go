@@ -75,7 +75,7 @@ func Benchmark_readChunk(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		_, _, _ = readChunk(f, 64*1024)
+		_, _, _ = readChunk(f, chunkSize)
 		b.StopTimer()
 		f.Seek(0, os.SEEK_SET)
 		b.StartTimer()
@@ -476,6 +476,21 @@ func Test_processFile(t *testing.T) {
 				t.Fatalf("unexpected result (-want, +got):\n%s", diff)
 			}
 		})
+	}
+}
+
+func Benchmark_processFile(b *testing.B) {
+	f, err := os.Open("test/measurements-10000-unique-keys.txt")
+	if err != nil {
+		b.Fatalf("open: %v", err)
+	}
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		_, _ = processFile(f, chunkSize)
+		b.StopTimer()
+		f.Seek(0, os.SEEK_SET)
+		b.StartTimer()
 	}
 }
 

@@ -24,6 +24,8 @@ type TempInfo struct {
 	Max   int
 }
 
+const chunkSize = 64 * 1024 * 1024
+
 var (
 	errInputFormat = errors.New("bad input format")
 
@@ -66,7 +68,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	m, err := processFile(f, 64*1024*1024)
+	m, err := processFile(f, chunkSize)
 	if err != nil {
 		log.Fatal(err)
 	}
