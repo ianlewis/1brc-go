@@ -24,7 +24,11 @@ type TempInfo struct {
 	Max   int
 }
 
-const chunkSize = 64 * 1024 * 1024
+const (
+	// TODO: Store resulting cities in an array.
+	// maxCities = 10000
+	chunkSize = 64 * 1024 * 1024
+)
 
 var (
 	errInputFormat = errors.New("bad input format")
@@ -97,6 +101,8 @@ func round(n float64) float64 {
 	return r / 10
 }
 
+// printMap prints the result map in the format expected for the 1 billion row
+// challenge.
 func printMap(m map[string]*TempInfo) {
 	// Print the output alphabetically.
 	var keys []string
@@ -121,6 +127,11 @@ func printMap(m map[string]*TempInfo) {
 	fmt.Print("}\n")
 }
 
+// TODO: Use random file access to read chunks.
+
+// readChunks reads chunks of size chunkSize from r and sends them to
+// chunkChan. If any errors occur, the error is sent to errChan and readChunks
+// returns immediately.
 func readChunks(r io.Reader, chunkSize int, chunkChan chan []byte, errChan chan error) {
 	defer close(chunkChan)
 	var remainder []byte
@@ -151,6 +162,9 @@ func readChunks(r io.Reader, chunkSize int, chunkChan chan []byte, errChan chan 
 	}
 }
 
+// processChunks reads chunks from chunkChan, processes each line in the chunk,
+// and sends the resulting map for the chunk to mapChan. If any errors occur,
+// the error is sent to errChan and processChunks returns immediately.
 func processChunks(chunkChan chan []byte, mapChan chan map[string]*TempInfo, errChan chan error, wg *sync.WaitGroup) {
 	defer func() {
 		wg.Done()
@@ -166,6 +180,7 @@ func processChunks(chunkChan chan []byte, mapChan chan map[string]*TempInfo, err
 	}
 }
 
+// processFile reads the file and produces a resulting map for the entire file.
 func processFile(r io.Reader, chunkSize int) (map[string]*TempInfo, error) {
 	// Create 1 goroutine per CPU core.
 	// 1: read chunks from file and send to chunkChan
@@ -337,6 +352,8 @@ func mergeMap(left, right map[string]*TempInfo) {
 	}
 }
 
+// toInt converts a string representation of a floating point number to the
+// nearest tenth (0.0) to an integer value.
 func toInt(s string) int {
 	var isNegative bool
 	if s[0] == '-' {
