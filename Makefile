@@ -81,11 +81,12 @@ unit-test: go-test ## Runs all unit tests.
 .PHONY: go-test
 go-test: ## Runs Go unit tests.
 	@set -euo pipefail;\
+		go mod vendor; \
 		extraargs=""; \
 		if [ "$(OUTPUT_FORMAT)" == "github" ]; then \
 			extraargs="-v"; \
 		fi; \
-		go test $$extraargs -race -coverprofile=coverage.out -covermode=atomic ./...
+		go test $$extraargs -mod vendor -race -coverprofile=coverage.out -covermode=atomic ./...
 
 ## Benchmarking
 #####################################################################
@@ -187,3 +188,13 @@ yamllint: ## Runs the yamllint linter.
 			extraargs="-f github"; \
 		fi; \
 		yamllint --strict -c .yamllint.yaml . $$extraargs
+
+## Maintenance
+#####################################################################
+
+clean:
+	rm -rf vendor
+	rm -rf node_modules
+	rm -f 1brc-go
+	rm -f *.pprof
+	rm -f coverage.out
