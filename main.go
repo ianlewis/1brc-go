@@ -13,7 +13,7 @@ import (
 	"runtime/pprof"
 	"runtime/trace"
 	"sort"
-	// "strconv"
+	"sync"
 )
 
 // TempInfo stores temperature stats for a single city.
@@ -149,9 +149,9 @@ func readChunks(r io.Reader, chunkSize int, chunkChan chan []byte, errChan chan 
 	}
 }
 
-func processChunks(chunkChan chan []byte, mapChan chan map[string]*TempInfo, errChan chan error, doneChan chan struct{}) {
+func processChunks(chunkChan chan []byte, mapChan chan map[string]*TempInfo, errChan chan error, wg *sync.WaitGroup) {
 	defer func() {
-		doneChan <- struct{}{}
+		wg.Done()
 	}()
 
 	for chunk := range chunkChan {
@@ -170,8 +170,7 @@ func processFile(r io.Reader, chunkSize int) (map[string]*TempInfo, error) {
 	// N-2: read chunks from chunkChan, process and send result to mapChan
 	// main: read results from mapChan and merge.
 
-	numCPU := runtime.NumCPU()
-	processGoroutines := numCPU
+	processGoroutines := runtime.NumCPU()
 
 	chunkChan := make(chan []byte, processGoroutines*3)
 	mapChan := make(chan map[string]*TempInfo, processGoroutines*2)
@@ -179,30 +178,22 @@ func processFile(r io.Reader, chunkSize int) (map[string]*TempInfo, error) {
 
 	go readChunks(r, chunkSize, chunkChan, errChan)
 
-	doneChan := make(chan struct{}, numCPU-2)
+	var wg sync.WaitGroup
 	for i := 0; i < processGoroutines; i++ {
-		go processChunks(chunkChan, mapChan, errChan, doneChan)
+		wg.Add(1)
+		go processChunks(chunkChan, mapChan, errChan, &wg)
 	}
 
-	// Wait for chunks to be processed.
-	tempMap := map[string]*TempInfo{}
+	// Wait until all goroutines are finished and close the map channel.
+	go func() {
+		wg.Wait()
+		close(mapChan)
+	}()
 
-	// Merge maps and stop when doneChan recieves all values.
-	var i int
-	for {
-		select {
-		case m := <-mapChan:
-			mergeMap(tempMap, m)
-		case <-doneChan:
-			i++
-		}
-		if i >= processGoroutines {
-			// All processors are done. Drain the map channel.
-			for len(mapChan) > 0 {
-				mergeMap(tempMap, <-mapChan)
-			}
-			break
-		}
+	// Merge resulting maps
+	tempMap := map[string]*TempInfo{}
+	for m := range mapChan {
+		mergeMap(tempMap, m)
 	}
 
 	// Return an error if there is one.
