@@ -25,9 +25,8 @@ type TempInfo struct {
 }
 
 const (
-	// TODO: Store resulting cities in an array.
 	maxCities = 10000
-	chunkSize = 64 * 1024 * 1024
+	chunkSize = 64 * 1024 * 1024 // 64mb
 )
 
 var (
@@ -126,8 +125,6 @@ func printMap(m map[string]*TempInfo) {
 	}
 	fmt.Print("}\n")
 }
-
-// TODO: Use random file access to read chunks.
 
 // readChunks reads chunks of size chunkSize from r and sends them to
 // chunkChan. If any errors occur, the error is sent to errChan and readChunks
